@@ -1,0 +1,101 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Mar 16 08:47:49 2021
+
+@author: 19406
+"""
+###t-SNE—images
+
+import os
+import cv2
+import matplotlib
+import numpy as np
+from glob import glob
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+
+
+def create_mask_for_plant(image):
+    image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+    sensitivity = 0
+    lower_hsv = np.array([0 - sensitivity, 100, 50])
+    upper_hsv = np.array([0 + sensitivity, 255, 255])
+
+    mask = cv2.inRange(image_hsv, lower_hsv, upper_hsv)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11,11))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    
+    return mask
+
+def segment_plant(image):
+    mask = create_mask_for_plant(image)
+    output = cv2.bitwise_and(image, image, mask = mask)
+    return output
+
+def visualize_scatter(data_2d, label_ids, figsize=(8,6)):
+    plt.figure(figsize=figsize)
+    plt.grid()
+    
+    nb_classes = len(np.unique(label_ids))
+    
+    for label_id in np.unique(label_ids):
+        plt.scatter(data_2d[np.where(label_ids == label_id), 0],
+                    data_2d[np.where(label_ids == label_id), 1],
+                    marker='o',
+                    color= plt.cm.Set1(label_id / float(nb_classes)),
+                    linewidth=1,
+                    alpha=0.8,
+                    label=id_to_label_dict[label_id])
+    plt.legend(loc='best')
+    plt.style.use('bmh')
+   # plt.title('TSNE')    
+    plt.xlabel('TSNE Dimension 1')
+    plt.ylabel('TSNE Dimension 2')
+    plt.savefig('sarsim_sample.jpg')
+    
+BASE_DATA_FOLDER = "./data"
+TRAIN_DATA_FOLDER = os.path.join(BASE_DATA_FOLDER, "test")
+
+images = []
+labels = []
+
+for class_folder_name in os.listdir(TRAIN_DATA_FOLDER):
+    class_folder_path = os.path.join(TRAIN_DATA_FOLDER, class_folder_name)
+    for image_path in glob(os.path.join(class_folder_path, "*.jpg")):
+        image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        
+#        image = cv2.resize(image, (128, 128))
+#        image = segment_plant(image)
+#        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+#        image = cv2.resize(image, (45,45))
+        
+        image = image.flatten()
+        
+        images.append(image)
+        labels.append(class_folder_name)
+        
+images = np.array(images)
+labels = np.array(labels)
+
+
+label_to_id_dict = {v:i for i,v in enumerate(np.unique(labels))}
+id_to_label_dict = {v: k for k, v in label_to_id_dict.items()}
+
+label_ids = np.array([label_to_id_dict[x] for x in labels])
+
+images_scaled = StandardScaler().fit_transform(images)
+
+
+pca = PCA(n_components=180)
+pca_result = pca.fit_transform(images_scaled)
+
+tsne = TSNE(n_components=2, perplexity=40.0)
+tsne_result = tsne.fit_transform(pca_result)
+#tsne_result_scaled = StandardScaler().fit_transform(tsne_result) #先拟合数据，再标准化
+tsne_result_scaled = tsne_result # 未进行标准化数据
+visualize_scatter(tsne_result_scaled, label_ids)
